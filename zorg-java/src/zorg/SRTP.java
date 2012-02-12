@@ -50,6 +50,7 @@ public class SRTP {
     public static final int UNPROTECT_NULL_PACKET         = -4;
     public static final int UNPROTECT_REPLAYED_PACKET     = -5;
 
+    private int     authTagSize = 10;  // SRTP (RFC 3711 s5.2) suggests signature size (n_tag) = 80 bits (10 bytes), ZRTP may use 32 bits
     private long    rollOverCounter = 0;       // RollOver Counter (for send packets)
     private long    rxRoc = 0;     // RollOver Counter for receive packets
     private int     kdr = 48;      // Key Derivation Rate (2^iKDR packets before using new keys)
@@ -90,10 +91,6 @@ public class SRTP {
     public static final int  MASTER_KEY_SIZE_32_BYTES = 32;  // PrivateGSM Tech Spec, 5.4.3 - only support 256 bit keys
     public static final int  MASTER_KEY_SIZE_16_BYTES = 16;  // Also allow 16 byte keys
     public static final int  MASTER_SALT_SIZE_BYTES = 14; // ZRTP Spec, 4.5.3 - always use 112 bit salt   
-    // FIXME: HMAC_AUTH_SIZE_BYTES should be configurable as the ZRTP spec, RFC 6189, s5.1.4 
-    // requires that an implementation must support at least 32 bit (4 byte) and 80 bit tags
-    //public static final int  HMAC_AUTH_SIZE_BYTES = 4; // default value from the original ZORG code, magic numbers in some places too
-    public static final int  HMAC_AUTH_SIZE_BYTES = 10; // SRTP (RFC 3711 s5.2) requires sig size (n_tag) = 80 bits (10 bytes)
     private static final int SRTP_WINDOW_SIZE = 64; // rfc3711, window size for replay protection checks
 
     //Used to log detailed and extensive traces
@@ -120,10 +117,19 @@ public class SRTP {
         platform.getUtils().zero(initVector);
         txRocAuthArray = new byte[4];     // ROC Array used in Tx Auth always 4 bytes
         txAuthHMACArray = new byte[20];   // HMAC result is always 20 bytes
-        txAuthResultArray = new byte[HMAC_AUTH_SIZE_BYTES];
         rxRocAuthArray = new byte[4];     // ROC Array used in Tx Auth always 4 bytes
         rxAuthHMACArray = new byte[20];   // HMAC result is always 20 bytes
-        rxAuthResultArray = new byte[HMAC_AUTH_SIZE_BYTES];
+        setAuthTagSize(authTagSize);
+    }
+    
+    public void setAuthTagSize(int authTagSize) {
+    	this.authTagSize = authTagSize;
+    	txAuthResultArray = new byte[authTagSize];
+    	rxAuthResultArray = new byte[authTagSize];
+    }
+    
+    protected int getAuthTagSize() {
+    	return authTagSize;
     }
     
     /**
@@ -369,8 +375,8 @@ public class SRTP {
         }
         // aPacket should have HMAC_AUTH_SIZE_BYTES bytes pre-allocated for the auth-code
         // assert(aPacket.getPacket().length >= aPacket.getLength() + HMAC_AUTH_SIZE_BYTES);
-        System.arraycopy(auth, 0, packet.getPacket(), packet.getLength(), HMAC_AUTH_SIZE_BYTES);
-        packet.setPayloadLength(packet.getPayloadLength() + HMAC_AUTH_SIZE_BYTES);
+        System.arraycopy(auth, 0, packet.getPacket(), packet.getLength(), getAuthTagSize());
+        packet.setPayloadLength(packet.getPayloadLength() + getAuthTagSize());
         retPacket = packet;
         if (SUPER_VERBOSE) {
             logBuffer("protect() After adding HMAC: ", retPacket.getPacket());
@@ -398,7 +404,7 @@ public class SRTP {
             txHMAC.getMAC(txAuthHMACArray, 0);
             // auth created above will be 20 bytes, but we use fixed 32 bit auth
             // rfc3711, section 4.2.1 states use of left most n bits
-            System.arraycopy(txAuthHMACArray, 0, txAuthResultArray, 0, HMAC_AUTH_SIZE_BYTES);
+            System.arraycopy(txAuthHMACArray, 0, txAuthResultArray, 0, getAuthTagSize());
             return(txAuthResultArray);
         } else {
             for (int i = 3; i >= 0; --i) {
@@ -412,7 +418,7 @@ public class SRTP {
             rxHMAC.getMAC(rxAuthHMACArray, 0);
             // auth created above will be 20 bytes, but we use fixed 32 bit auth
             // rfc3711, section 4.2.1 states use of left most n bits
-            System.arraycopy(rxAuthHMACArray, 0, rxAuthResultArray, 0, HMAC_AUTH_SIZE_BYTES);
+            System.arraycopy(rxAuthHMACArray, 0, rxAuthResultArray, 0, getAuthTagSize());
             return(rxAuthResultArray);
         }
     }
@@ -600,7 +606,7 @@ public class SRTP {
 
         // Now need to check authentication & remove auth bytes from payload
         int originalLen = packet.getPayloadLength();
-        int newLen = originalLen - HMAC_AUTH_SIZE_BYTES;
+        int newLen = originalLen - getAuthTagSize();
         
         // we'll reduce the payload length but the auth-code will still be present after the payload for comparison
         int pktAuthCodePos = packet.getHeaderLength() + newLen;
@@ -614,12 +620,12 @@ public class SRTP {
             return UNPROTECT_ERROR_DECRYPTING;
         }
         
-        if (!platform.getUtils().equals(authCode, 0, packet.getPacket(), pktAuthCodePos, HMAC_AUTH_SIZE_BYTES)) {
+        if (!platform.getUtils().equals(authCode, 0, packet.getPacket(), pktAuthCodePos, getAuthTagSize())) {
             // Auth failed
             logWarning("unprotect() Authentication failed");
             logBuffer("authCode:",authCode);
-            byte[] pktAuthCode = new byte[HMAC_AUTH_SIZE_BYTES];
-            System.arraycopy(packet.getPacket(), pktAuthCodePos, pktAuthCode, 0, HMAC_AUTH_SIZE_BYTES);
+            byte[] pktAuthCode = new byte[getAuthTagSize()];
+            System.arraycopy(packet.getPacket(), pktAuthCodePos, pktAuthCode, 0, getAuthTagSize());
             logBuffer("pktAuthCode:",pktAuthCode);
             logBuffer("iRxSessAuthKey:",rxSessAuthKey);
             log("v = "+Integer.toHexString((int) v)+" ("+v+")");
