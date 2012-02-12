@@ -192,8 +192,8 @@ public class ZRTPCache {
     
     public boolean isNewZidForTrustedUser(String aNumber) {
         boolean wasTrusted = false;
-        for (Enumeration e = cache.keys() ; e.hasMoreElements() ;) {
-            String key = (String)e.nextElement();
+        for (Enumeration<String> e = cache.keys() ; e.hasMoreElements() ;) {
+            String key = e.nextElement();
             ZrtpCacheEntry ce = (ZrtpCacheEntry)cache.get(key);
             if (ce.getNumber() != null) {
                 if (platform.getAddressBook().matchingNumbers(ce.getNumber(), aNumber)) {

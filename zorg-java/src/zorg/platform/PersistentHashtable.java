@@ -48,7 +48,7 @@ public interface PersistentHashtable {
 	 * Returns enumeration of all ZIDs
 	 * @return
 	 */
-	Enumeration keys();
+	Enumeration<String> keys();
 
 	/**
 	 * find a cache entry for specified ZID
