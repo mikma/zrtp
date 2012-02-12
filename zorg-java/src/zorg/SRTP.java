@@ -90,7 +90,10 @@ public class SRTP {
     public static final int  MASTER_KEY_SIZE_32_BYTES = 32;  // PrivateGSM Tech Spec, 5.4.3 - only support 256 bit keys
     public static final int  MASTER_KEY_SIZE_16_BYTES = 16;  // Also allow 16 byte keys
     public static final int  MASTER_SALT_SIZE_BYTES = 14; // ZRTP Spec, 4.5.3 - always use 112 bit salt   
-    public static final int  HMAC_AUTH_SIZE_BYTES = 4; // ZRTP Spec 4.5.3 - always use 32 bit HMAC for Authentication
+    // FIXME: HMAC_AUTH_SIZE_BYTES should be configurable as the ZRTP spec, RFC 6189, s5.1.4 
+    // requires that an implementation must support at least 32 bit (4 byte) and 80 bit tags
+    //public static final int  HMAC_AUTH_SIZE_BYTES = 4; // default value from the original ZORG code, magic numbers in some places too
+    public static final int  HMAC_AUTH_SIZE_BYTES = 10; // SRTP (RFC 3711 s5.2) requires sig size (n_tag) = 80 bits (10 bytes)
     private static final int SRTP_WINDOW_SIZE = 64; // rfc3711, window size for replay protection checks
 
     //Used to log detailed and extensive traces
@@ -390,10 +393,12 @@ public class SRTP {
             txHMAC.reset();
             txHMAC.update(packet.getPacket(), 0, packet.getLength());
             txHMAC.update(txRocAuthArray);
+            if (SUPER_VERBOSE)
+            	logBuffer("getAuthentication (TX): pktlen = " + packet.getLength() + ", RoC = ", txRocAuthArray);
             txHMAC.getMAC(txAuthHMACArray, 0);
             // auth created above will be 20 bytes, but we use fixed 32 bit auth
             // rfc3711, section 4.2.1 states use of left most n bits
-            System.arraycopy(txAuthHMACArray, 0, txAuthResultArray, 0, 4);
+            System.arraycopy(txAuthHMACArray, 0, txAuthResultArray, 0, HMAC_AUTH_SIZE_BYTES);
             return(txAuthResultArray);
         } else {
             for (int i = 3; i >= 0; --i) {
@@ -402,10 +407,12 @@ public class SRTP {
             rxHMAC.reset();
             rxHMAC.update(packet.getPacket(), 0, packet.getLength());
             rxHMAC.update(rxRocAuthArray);
+            if (SUPER_VERBOSE)
+            	logBuffer("getAuthentication (RX): pktlen = " + packet.getLength() + ", RoC = ", rxRocAuthArray);
             rxHMAC.getMAC(rxAuthHMACArray, 0);
             // auth created above will be 20 bytes, but we use fixed 32 bit auth
             // rfc3711, section 4.2.1 states use of left most n bits
-            System.arraycopy(rxAuthHMACArray, 0, rxAuthResultArray, 0, 4);
+            System.arraycopy(rxAuthHMACArray, 0, rxAuthResultArray, 0, HMAC_AUTH_SIZE_BYTES);
             return(rxAuthResultArray);
         }
     }
@@ -1006,6 +1013,7 @@ public class SRTP {
         }
         String outString = platform.getUtils().byteToHexString(outArray);
         String expectedOutput = "E03EAD0935C95E80E166B16DD92B4EB4D23513162B02D0F72A43A2FE4A5F97AB41E95B3BB0A2E8DD477901E4FCA894C0";
+        log("expected output: " + expectedOutput);
         if (!outString.equalsIgnoreCase(expectedOutput)) {
             ret = false;
         }
