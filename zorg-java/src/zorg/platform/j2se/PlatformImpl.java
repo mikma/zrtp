@@ -11,6 +11,8 @@ public class PlatformImpl implements zorg.platform.Platform {
 	ZrtpLogger logger = new StandardLoggerImpl();
 	Utils utils = new UtilsImpl();
 	CryptoUtils cryptoUtils = new CryptoUtilsImpl();
+	PersistentHashtable ht = new PersistentHashtableImpl();
+	AddressBook addresses = new AddressBookImpl();
 	
 	public PlatformImpl() {
 		
@@ -23,8 +25,7 @@ public class PlatformImpl implements zorg.platform.Platform {
 
 	@Override
 	public AddressBook getAddressBook() {
-		// TODO Auto-generated method stub
-		throw new RuntimeException("not implemented");
+		return addresses;
 	}
 
 	@Override
@@ -44,8 +45,7 @@ public class PlatformImpl implements zorg.platform.Platform {
 
 	@Override
 	public PersistentHashtable getHashtable() {
-		// TODO Auto-generated method stub
-		throw new RuntimeException("not implemented");
+		return ht;
 	}
 
 }

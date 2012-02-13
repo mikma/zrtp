@@ -15,7 +15,6 @@ import zorg.platform.EncryptorSuite;
 
 public class EncryptorSuiteImpl implements EncryptorSuite {
 	
-	private static final String RANDOM_ALGORITHM = "SHA1PRNG";
 	private static final String CIPHER_ALGORITHM = "AES";
 
 	SecretKeySpec skeySpec;
@@ -26,7 +25,7 @@ public class EncryptorSuiteImpl implements EncryptorSuite {
 		try {
 			skeySpec = new SecretKeySpec(key, "AES");
 			cipher = Cipher.getInstance(CIPHER_ALGORITHM);
-			secureRandom = SecureRandom.getInstance(RANDOM_ALGORITHM);
+			secureRandom = SecureRandom.getInstance(CryptoUtilsImpl.DEFAULT_RANDOM_ALGORITHM);
 			secureRandom.setSeed(initVector);
 			cipher.init(Cipher.ENCRYPT_MODE, skeySpec, secureRandom);
 		} catch (Exception ex) {

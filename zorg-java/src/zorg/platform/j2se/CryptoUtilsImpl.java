@@ -1,5 +1,15 @@
 package zorg.platform.j2se;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+
+import javax.crypto.Cipher;
+import javax.crypto.Mac;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.SecretKeySpec;
+
 import zorg.CryptoException;
 import zorg.platform.DiffieHellmanSuite;
 import zorg.platform.Digest;
@@ -9,40 +19,60 @@ import zorg.platform.RandomGenerator;
 
 public class CryptoUtilsImpl implements zorg.platform.CryptoUtils {
 	
+	public static final String DEFAULT_RANDOM_ALGORITHM = "SHA1PRNG";
+	
 	public CryptoUtilsImpl() {
 		
 	}
 
+	private Digest makeDigestImpl(DigestType digestType) {
+		try {
+			return new DigestImpl(digestType);
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+			throw new RuntimeException("Failed to create digest: " + digestType + ": " + e.getClass().getName() + ": " + e.getMessage());
+		}
+	}
+	
 	@Override
 	public Digest createDigestSHA1() {
-		// TODO Auto-generated method stub
-		throw new RuntimeException("not implemented");
+		return makeDigestImpl(DigestType.SHA1);
 	}
-
+	
 	@Override
 	public Digest createDigestSHA256() {
-		// TODO Auto-generated method stub
-		throw new RuntimeException("not implemented");
+		return makeDigestImpl(DigestType.SHA256);
 	}
 
 	@Override
 	public Digest createDigestSHA384() {
-		// TODO Auto-generated method stub
-		throw new RuntimeException("not implemented");
+		return makeDigestImpl(DigestType.SHA384);
 	}
 
 	@Override
 	public byte[] calculateSHA256HMAC(byte[] data, int offset, int length,
 			byte[] aKey) {
-		// TODO Auto-generated method stub
-		throw new RuntimeException("not implemented");
+		return calculateHMAC(DigestType.SHA256, data, offset, length, aKey);
 	}
 
 	@Override
 	public byte[] calculateSHA384HMAC(byte[] data, int offset, int length,
 			byte[] aKey) {
-		// TODO Auto-generated method stub
-		throw new RuntimeException("not implemented");
+		return calculateHMAC(DigestType.SHA384, data, offset, length, aKey);
+	}
+
+	private byte[] calculateHMAC(DigestType digestType, byte[] data, int offset,
+			int length, byte[] aKey) {
+		try {
+			Mac mac = Mac.getInstance(digestType.getJCEHmacName());
+			SecretKeySpec key = new SecretKeySpec(aKey, mac.getAlgorithm());
+			mac.init(key);
+			mac.update(data, offset, length);
+			return mac.doFinal();
+		} catch (Exception e) {
+			e.printStackTrace();
+			throw new RuntimeException("Failed to calc hmac " + digestType + e.getClass().getName() + ": " + e.getMessage());
+		}
 	}
 
 	@Override
@@ -52,28 +82,44 @@ public class CryptoUtilsImpl implements zorg.platform.CryptoUtils {
 
 	@Override
 	public RandomGenerator getRandomGenerator() {
-		// TODO Auto-generated method stub
-		throw new RuntimeException("not implemented");
+		return new RandomGeneratorImpl();
 	}
+	
+	final static String CIPHER_ALGORITHM_CFB = "AES/CFB8/NoPadding";
 
 	@Override
 	public byte[] aesEncrypt(byte[] data, byte[] key, byte[] initVector)
 			throws CryptoException {
-		// TODO Auto-generated method stub
-		throw new RuntimeException("not implemented");
+		try {
+			SecretKeySpec keySpec = new SecretKeySpec(key, "AES");
+			Cipher cipher = Cipher.getInstance(CIPHER_ALGORITHM_CFB);
+			SecureRandom secureRandom = SecureRandom.getInstance(CryptoUtilsImpl.DEFAULT_RANDOM_ALGORITHM);
+			secureRandom.setSeed(initVector);
+			cipher.init(Cipher.ENCRYPT_MODE, keySpec, secureRandom);
+			return cipher.doFinal(data);
+		} catch (Exception e) {
+			throw new CryptoException(e);
+		}
 	}
 
 	@Override
 	public byte[] aesDecrypt(byte[] data, int offset, int length, byte[] key,
 			byte[] initVector) throws CryptoException {
-		// TODO Auto-generated method stub
-		throw new RuntimeException("not implemented");
+		try {
+			SecretKeySpec keySpec = new SecretKeySpec(key, "AES");
+			Cipher cipher = Cipher.getInstance(CIPHER_ALGORITHM_CFB);
+			SecureRandom secureRandom = SecureRandom.getInstance(CryptoUtilsImpl.DEFAULT_RANDOM_ALGORITHM);
+			secureRandom.setSeed(initVector);
+			cipher.init(Cipher.DECRYPT_MODE, keySpec, secureRandom);
+			return cipher.doFinal(data, offset, length);
+		} catch (Exception e) {
+			throw new CryptoException(e);
+		}
 	}
 
 	@Override
 	public DiffieHellmanSuite createDHSuite() {
-		// TODO Auto-generated method stub
-		throw new RuntimeException("not implemented");
+		return new DiffieHellmanSuiteImpl();
 	}
 
 	@Override
