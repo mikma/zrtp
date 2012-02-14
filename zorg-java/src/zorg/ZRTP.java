@@ -48,6 +48,9 @@ public class ZRTP {
     // 4 bytes version field
     public final static String VERSION = "1.10";
     
+    // the magic cookie to insert in the timestamp field of an RTP packet carrying a ZRTP payload
+    public final static int ZRTP_MAGIC_COOKIE = 0x5a525450;
+    
     // Relevant part of version field, used for version negotiation
     public final static String VERSION_PREFIX = VERSION.substring(0, 3);
     
@@ -463,7 +466,8 @@ public class ZRTP {
             
             try {
                 // TODO: create after algorithm negotiation
-            	dhSuite.setAlgorithm(KeyAgreementType.ECDH384);
+            	//dhSuite.setAlgorithm(KeyAgreementType.ECDH384);
+            	dhSuite.setAlgorithm(KeyAgreementType.DH3K);
                 //Initialize the retransmission timer interval
                 timerInterval = T1_INITIAL_INTERVAL;
                 sendHello();
