@@ -13,9 +13,15 @@ public class PlatformImpl implements zorg.platform.Platform {
 	CryptoUtils cryptoUtils = new CryptoUtilsImpl();
 	PersistentHashtable ht = new PersistentHashtableImpl();
 	AddressBook addresses = new AddressBookImpl();
+	String label;
 	
 	public PlatformImpl() {
-		
+		this.label = "";
+	}
+
+	public PlatformImpl(String label) {
+		this.label = label;
+		logger = new StandardLoggerImpl(label);
 	}
 
 	@Override

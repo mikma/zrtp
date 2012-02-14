@@ -14,14 +14,21 @@ public class ZrtpCacheEntryImpl implements ZrtpCacheEntry {
 
 	@Override
 	public void setData(byte[] data) {
-		this.data = new byte[data.length];
-		for(int i = 0; i < data.length; i++)
-			this.data[i] = data[i];
+		if(data == null) {
+			this.data = null;
+		} else {
+			this.data = new byte[data.length];
+			for(int i = 0; i < data.length; i++)
+				this.data[i] = data[i];
+		}
 	}
 
 	@Override
 	public void setNumber(String number) {
-		this.number = new String(number);
+		if(number != null)
+			this.number = new String(number);
+		else
+			number = null;
 	}
 
 	@Override

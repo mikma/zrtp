@@ -23,6 +23,8 @@ public class UtilsImpl implements zorg.platform.Utils {
 
 	@Override
 	public String byteToHexString(byte[] buffer, int offset, int length) {
+		if(buffer == null)
+			return "<null buffer>";
 		// FIXME - performance
 		StringBuilder sb = new StringBuilder();
 		for(int i = 0; i < length; i++) {
@@ -36,6 +38,8 @@ public class UtilsImpl implements zorg.platform.Utils {
 	@Override
 	public String byteToHexString(byte[] buffer) {
 		// FIXME - performance
+		if(buffer == null)
+			return "<null buffer>";
 		return byteToHexString(buffer, 0, buffer.length);
 	}
 

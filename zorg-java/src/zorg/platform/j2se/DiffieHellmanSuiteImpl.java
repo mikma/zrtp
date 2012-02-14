@@ -30,10 +30,34 @@ import zorg.platform.ZrtpLogger;
 public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
 	
 	private static final String ALGORITHM_DH = "DH";
-	private static final String ALGORITHM_EC = "ECDH";
+	private static final String ALGORITHM_ECDH = "ECDH";
+	private static final int DH_EXP_LENGTH = 256;   // = twice the AES key length = 2 * 128 bits
+	
+	// Copied directly from RFC 3526, 2012-02-13
+	public String DH_PRIME_S = 
+      		"FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1" +
+      		"29024E088A67CC74020BBEA63B139B22514A08798E3404DD" +
+      		"EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245" +
+      		"E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED" +
+      		"EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D" +
+      		"C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F" +
+      		"83655D23DCA3AD961C62F356208552BB9ED529077096966D" +
+      		"670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B" +
+      		"E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9" +
+      		"DE2BCBF6955817183995497CEA956AE515D2261898FA0510" +
+      		"15728E5A8AAAC42DAD33170D04507A33A85521ABDF1CBA64" +
+      		"ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7" +
+      		"ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6B" +
+      		"F12FFA06D98A0864D87602733EC86A64521F2B18177B200C" +
+      		"BBE117577A615D6C770988C0BAD946E208E24FA074E5AB31" +
+      		"43DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF";
+
+
 	
 	private byte[] DH_PRIME = {
 	        // From RFC3526, as mandated in zrtp spec, 5.1.5
+			(byte) 0x00, // as BigInteger interprets this as two's complement, we need
+			             // to insert leading 0
 	        (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF,
 	        (byte) 0xFF, (byte) 0xFF, (byte) 0xC9, (byte) 0x0F, (byte) 0xDA, (byte) 0xA2,
 	        (byte) 0x21, (byte) 0x68, (byte) 0xC2, (byte) 0x34, (byte) 0xC4, (byte) 0xC6,
@@ -119,7 +143,8 @@ public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
 			byte[] dhGen = new byte[384];
     		new UtilsImpl().zero(dhGen);
     		dhGen[383] = 0x02;
-    		dhP = new BigInteger(DH_PRIME);
+    		//dhP = new BigInteger(DH_PRIME);
+    		dhP = new BigInteger(DH_PRIME_S, 16);
     		dhG = new BigInteger(dhGen);
 		} catch (NoSuchAlgorithmException e) {
 			e.printStackTrace();
@@ -138,7 +163,7 @@ public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
 	}
 	
 	private void setupEC(int bits) throws NoSuchAlgorithmException {
-		ecKeyGen = KeyPairGenerator.getInstance("EC");
+		ecKeyGen = KeyPairGenerator.getInstance(ALGORITHM_ECDH);
 		ecKeyGen.initialize(bits);
 		ecKeyPair = ecKeyGen.generateKeyPair();
 		clearDh();
@@ -155,8 +180,8 @@ public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
 			dhMode = dh;
 			switch (dhMode.keyType) {
 		        case KeyAgreementType.DH_MODE_DH3K:
-		    		AlgorithmParameterSpec paramSpec = new DHParameterSpec(dhP, dhG);
-		    		dhKeyGen = KeyPairGenerator.getInstance("DH");
+		    		DHParameterSpec paramSpec = new DHParameterSpec(dhP, dhG, DH_EXP_LENGTH);
+		    		dhKeyGen = KeyPairGenerator.getInstance(ALGORITHM_DH);
 		    		dhKeyGen.initialize(paramSpec, sr);
 		    		dhKeyPair = dhKeyGen.generateKeyPair();
 		    		clearEcdh();
@@ -172,7 +197,7 @@ public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
 		} catch (Exception e) {
 	        // TODO Auto-generated catch block
 	        e.printStackTrace();
-	        throw new RuntimeException("Failed init Diffie-Hellman: " + e.getClass().getName() + ": " + e.getMessage());
+	        throw new RuntimeException("Failed init Diffie-Hellman: " + e.getClass().getName() + ": " + e.getMessage() + ", bitlength p = " + dhP.bitCount());
         }
 	}
 
@@ -228,7 +253,7 @@ public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
 	        	log("Writing public key for DH3K mode");
 	        	DHPublicKey pub = (DHPublicKey)dhKeyPair.getPublic();
 	        	BigInteger y = pub.getY();
-	        	writeToBuf(data, offset, dhMode.pvLengthInWords/4, y);
+	        	writeToBuf(data, offset, dhMode.pvLengthInWords * 4, y);
 	            //log("Using DH3K key, length "+(keyArray.length + _offset), keyArray);
 	        }
 		} catch (Exception e) {
@@ -240,12 +265,19 @@ public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
 		if(v.signum() == -1) // the padding algorithm below won't work for a negative sign bit
     		throw new RuntimeException("Can't handle a negative BigInteger in public key");
         byte[] _r = v.toByteArray();
-        if(_r.length > expected)
-        	throw new RuntimeException("Can't handle a BigInteger bigger than expected bit length for DH public key");
+        // Check if the high order byte is 0 (because the high order bit of the next byte might be 1)
+        int permittedLength = expected;
+        if(_r.length > 0 && _r[0] == 0)
+        	permittedLength++;
+        if(_r.length > permittedLength)
+        	throw new RuntimeException("Can't handle a BigInteger bigger than expected bit length for DH public key: " + _r.length + " > " + expected);
         int _offset = expected - _r.length; // for 0 padding
         for(int i = 0; i < _offset; i++)
         	data[offset + i] = 0;  // put leading zeros
-        System.arraycopy(_r, 0, data, offset + _offset, _r.length);
+        if(permittedLength == expected)
+        	System.arraycopy(_r, 0, data, offset + _offset, _r.length);
+        else
+        	System.arraycopy(_r, 1, data, offset + _offset, _r.length - 1);
 	}
 	
 	protected BigInteger readFromBuf(byte[] data, int offset, int expected) {
@@ -268,9 +300,9 @@ public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
 				BigInteger x = readFromBuf(aMsg, offset, expected);
 				BigInteger y = readFromBuf(aMsg, offset+expected, expected);
 				ECPoint w = new ECPoint(x, y);
-				KeyFactory keyFac = KeyFactory.getInstance(ALGORITHM_EC);
+				KeyFactory keyFac = KeyFactory.getInstance(ALGORITHM_ECDH);
 				ECPublicKeySpec ecPKSpec = new ECPublicKeySpec(w, null);
-				KeyAgreement agree = KeyAgreement.getInstance(ALGORITHM_DH);
+				KeyAgreement agree = KeyAgreement.getInstance(ALGORITHM_ECDH);
 		    	agree.init(dhKeyPair.getPrivate());
 		    	agree.doPhase(keyFac.generatePublic(ecPKSpec), true);
 		        //as stated in Section 4.4.1.4 in ECDH P-256 mode is in fact 32 bytes

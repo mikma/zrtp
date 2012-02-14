@@ -7,6 +7,16 @@ import zorg.platform.ZrtpLogger;
 public class StandardLoggerImpl implements ZrtpLogger {
 	
 	java.util.logging.Logger logger = java.util.logging.Logger.getLogger("ZRTP");
+	String label = ">>> ZRTP <<< ";
+
+	public StandardLoggerImpl(String label) {
+		this.label = ">>> ZRTP (" + label + ") <<<";
+		logger = java.util.logging.Logger.getLogger("ZRTP (" + label + ")");
+	}
+	
+	public StandardLoggerImpl() {
+		
+	}
 
 	@Override
 	public boolean isEnabled() {
@@ -15,22 +25,22 @@ public class StandardLoggerImpl implements ZrtpLogger {
 
 	@Override
 	public void log(String message) {
-		logger.log(Level.INFO, message);
+		logger.log(Level.INFO, label + message);
 	}
 
 	@Override
 	public void log(String message, byte[] buffer) {
-		logger.log(Level.INFO, message + ": " + new UtilsImpl().byteToHexString(buffer));
+		logger.log(Level.INFO, label + message + ": " + new UtilsImpl().byteToHexString(buffer));
 	}
 
 	@Override
 	public void logWarning(String message) {
-		logger.warning(message);
+		logger.warning(label + message);
 	}
 
 	@Override
 	public void logException(String message) {
-		logger.log(Level.SEVERE, message);
+		logger.log(Level.SEVERE, label + message);
 	}
 
 }

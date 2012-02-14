@@ -36,8 +36,10 @@ public class DigestImpl implements Digest {
 
 	@Override
 	public int getDigest(byte[] buffer, int offset, boolean reset) {
-		if(!reset)
-			throw new RuntimeException("Can't getDigest() without resetting");
+		// FIXME - remove the `reset' flag?  is it possible on every platform?
+		//  is there a performance gain?  Can we cache digest objects for re-use?
+		//if(!reset)
+		//	throw new RuntimeException("Can't getDigest() without resetting");
 		int len = getDigestLength();
 		try {
 			md.digest(buffer, offset, len);

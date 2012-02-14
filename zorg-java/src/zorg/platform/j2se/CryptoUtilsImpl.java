@@ -8,7 +8,10 @@ import java.security.SecureRandom;
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
 import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+
+import com.sun.crypto.provider.AESParameters;
 
 import zorg.CryptoException;
 import zorg.platform.DiffieHellmanSuite;
@@ -85,7 +88,7 @@ public class CryptoUtilsImpl implements zorg.platform.CryptoUtils {
 		return new RandomGeneratorImpl();
 	}
 	
-	final static String CIPHER_ALGORITHM_CFB = "AES/CFB8/NoPadding";
+	final static String CIPHER_ALGORITHM_CFB = "AES/CFB64/NoPadding";
 
 	@Override
 	public byte[] aesEncrypt(byte[] data, byte[] key, byte[] initVector)
@@ -93,9 +96,10 @@ public class CryptoUtilsImpl implements zorg.platform.CryptoUtils {
 		try {
 			SecretKeySpec keySpec = new SecretKeySpec(key, "AES");
 			Cipher cipher = Cipher.getInstance(CIPHER_ALGORITHM_CFB);
-			SecureRandom secureRandom = SecureRandom.getInstance(CryptoUtilsImpl.DEFAULT_RANDOM_ALGORITHM);
-			secureRandom.setSeed(initVector);
-			cipher.init(Cipher.ENCRYPT_MODE, keySpec, secureRandom);
+			//SecureRandom secureRandom = SecureRandom.getInstance(CryptoUtilsImpl.DEFAULT_RANDOM_ALGORITHM);
+			//secureRandom.setSeed(initVector);
+			IvParameterSpec ivSpec = new IvParameterSpec(initVector);
+			cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
 			return cipher.doFinal(data);
 		} catch (Exception e) {
 			throw new CryptoException(e);
@@ -108,9 +112,10 @@ public class CryptoUtilsImpl implements zorg.platform.CryptoUtils {
 		try {
 			SecretKeySpec keySpec = new SecretKeySpec(key, "AES");
 			Cipher cipher = Cipher.getInstance(CIPHER_ALGORITHM_CFB);
-			SecureRandom secureRandom = SecureRandom.getInstance(CryptoUtilsImpl.DEFAULT_RANDOM_ALGORITHM);
-			secureRandom.setSeed(initVector);
-			cipher.init(Cipher.DECRYPT_MODE, keySpec, secureRandom);
+			//SecureRandom secureRandom = SecureRandom.getInstance(CryptoUtilsImpl.DEFAULT_RANDOM_ALGORITHM);
+			//secureRandom.setSeed(initVector);
+			IvParameterSpec ivSpec = new IvParameterSpec(initVector);
+			cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
 			return cipher.doFinal(data, offset, length);
 		} catch (Exception e) {
 			throw new CryptoException(e);
