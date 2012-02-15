@@ -250,9 +250,9 @@ public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
 		    	//    - big endian (most significant byte first)
 		    	//    - leading zeros intact
 		    	//    - refer to RFC 3526 s4
-	        	log("Writing public key for DH3K mode");
 	        	DHPublicKey pub = (DHPublicKey)dhKeyPair.getPublic();
 	        	BigInteger y = pub.getY();
+	        	log("Writing public key for DH3K mode: " + y);
 	        	writeToBuf(data, offset, dhMode.pvLengthInWords * 4, y);
 	            //log("Using DH3K key, length "+(keyArray.length + _offset), keyArray);
 	        }
@@ -265,6 +265,7 @@ public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
 		if(v.signum() == -1) // the padding algorithm below won't work for a negative sign bit
     		throw new RuntimeException("Can't handle a negative BigInteger in public key");
         byte[] _r = v.toByteArray();
+        log("Writing key bytes: " + v.toString(16));
         // Check if the high order byte is 0 (because the high order bit of the next byte might be 1)
         int permittedLength = expected;
         if(_r.length > 0 && _r[0] == 0)
@@ -272,6 +273,8 @@ public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
         if(_r.length > permittedLength)
         	throw new RuntimeException("Can't handle a BigInteger bigger than expected bit length for DH public key: " + _r.length + " > " + expected);
         int _offset = expected - _r.length; // for 0 padding
+        if(_offset < 0)
+        	_offset = 0;
         for(int i = 0; i < _offset; i++)
         	data[offset + i] = 0;  // put leading zeros
         if(permittedLength == expected)
@@ -281,9 +284,13 @@ public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
 	}
 	
 	protected BigInteger readFromBuf(byte[] data, int offset, int expected) {
-		byte[] _buf = new byte[expected];
+		// BigInteger constructor expects two's-complement, so we must insert
+		// a leading 0 to guarantee that it will be treated as a positive number
+		byte[] _buf = new byte[expected + 1];
+		_buf[0] = 0;
 		for(int i = 0; i < expected; i++)
-			_buf[i] = data[offset + i];
+			_buf[i + 1] = data[offset + i];
+		log("Reading key bytes: ", _buf);
 		return new BigInteger(_buf);
 	}
 	
@@ -313,12 +320,14 @@ public class DiffieHellmanSuiteImpl implements DiffieHellmanSuite {
 		    	
 		    	int expected = dhMode.pvLengthInWords * 4;
 		    	BigInteger y = readFromBuf(aMsg, offset, expected);
+		    	log("Read public key for DH3K mode: " + y);
 		    	KeyFactory keyFac = KeyFactory.getInstance(ALGORITHM_DH);
 		    	DHPublicKeySpec dhPKSpec = new DHPublicKeySpec(y, dhP, dhG);
 		    	KeyAgreement agree = KeyAgreement.getInstance(ALGORITHM_DH);
 		    	agree.init(dhKeyPair.getPrivate());
 		    	agree.doPhase(keyFac.generatePublic(dhPKSpec), true);
 		    	byte[] iDHResult = agree.generateSecret();
+		    	log("DH shared secret: ", iDHResult);
 		        return iDHResult;
 		    }
 		} catch (Exception e) {
