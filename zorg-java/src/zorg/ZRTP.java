@@ -23,6 +23,7 @@ package zorg;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.LinkedList;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -110,7 +111,7 @@ public class ZRTP {
 
     private ZrtpListener listener = null;
     private RtpStack rtpStack = null;
-    private int state = ZRTP_STATE_INACTIVE;
+    private volatile int state = ZRTP_STATE_INACTIVE;
     private boolean started = false;
     private int seqNum;
     private boolean completed; // Set to true when zrtp session is completed
@@ -261,6 +262,9 @@ public class ZRTP {
     
     // our cache expiry value; we're always sending the recommened value 0xffffffff
     private static final byte[] mOurCacheExpiry = { (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff };
+
+	private static final String DEFAULT_AUTHENTICATION_MODE = "HS80";
+	private static final int DEFAULT_AUTHENTICATION_TAG_SIZE = 10;
     
     private static int counter = 0;
     private final Platform platform;
@@ -485,6 +489,7 @@ public class ZRTP {
                         logString("Thread Interrupted E:"+e);
                     }
                 }
+                processQueuedMessages();
             }
             endSession();
             logString("Thread Ending");
@@ -747,7 +752,7 @@ public class ZRTP {
         	++hc;
         }
         String ciphers = new String("AES1AES3"); // AES-128 & 256
-        String authTags = new String("HS32"); // HMAC-SHA1 32
+        String authTags = new String(DEFAULT_AUTHENTICATION_MODE); // HMAC-SHA1 80 bits
         String keyTypes = "";
         byte kc = 0;
         if(TestSettings.KEY_TYPE_EC38) {
@@ -1463,12 +1468,45 @@ public class ZRTP {
         //TODO send Ping Ack not implemented
     }
     
+    class IncomingMessage {
+    	byte[] data;
+    	public IncomingMessage(byte[] _data, int offset, int len) {
+    		this.data = new byte[len];
+    		System.arraycopy(_data, offset, this.data, 0, len);
+    	}
+    	public byte[] getData() {
+    		return data;
+    	}
+    }
+    LinkedList<IncomingMessage> messageQueue = new LinkedList<IncomingMessage>();
     /**
      * Handle an incoming ZRTP message.
      * Assumes RTP headers and trailing CRC have been stripped by caller
      * @param aMsg byte array containing the ZRTP message
      */
     public void handleIncomingMessage(byte[] data, int offset, int len) {
+    	synchronized(messageQueue) {
+    		messageQueue.add(new IncomingMessage(data, offset, len));
+    	}
+    	synchronized(lock) {
+    		lock.notifyAll();
+    	}
+    }
+    
+    protected void processQueuedMessages() {
+    	IncomingMessage msg = null;
+    	while(true) {
+    		synchronized(messageQueue) {
+    			msg = messageQueue.poll();
+    			if(msg == null)
+    				return;
+    		}
+    		byte[] data = msg.getData();
+    		respondToMessage(data, 0, data.length);
+    	}
+    }
+    
+    protected void respondToMessage(byte[] data, int offset, int len) {
         lastPacketArrival = System.currentTimeMillis();
         if(platform.isDebugVersion()) {
         	logZrtpMessage("ZRTP received", data, offset, len);
@@ -2362,4 +2400,22 @@ public class ZRTP {
         System.arraycopy(src, offset, ret, 0, len);
         return ret;
     }
+
+    /**
+     * The main purpose of this function is to let the application know if
+     * it is safe to send RTP packets unencrypted.  The ZRTP spec mandates
+     * that:
+     * - the initiator should stop sending RTP after sending Commit
+     * - the responder should stop sending RTP after receiving Commit
+     * @return true if Commit has been sent or received
+     */
+	public boolean isProgressing() {
+		if(state < ZRTP_STATE_GOT_COMMIT)
+			return false;
+		return true;
+	}
+	
+	public String getAuthenticationMode() {
+		return DEFAULT_AUTHENTICATION_MODE;
+	}
 }
