@@ -133,6 +133,7 @@ public class ZRTP {
     private byte[] farEndH3;   // H3 in hash chain of far end (as indicated in Hello)
     private KeyAgreementType dhMode;        // Indicates which Diffie-Hellman mode in use
     private CipherType cipherInUse;   // Indicates which cipher is in use
+    private AuthenticationMode authMode;    // Indicates which authentication tag is to be used
     private SasType sasMode;       // Indicates which SAS mode is in use
     private HashType hashMode;      // Indicates which Hash type is in use
     private byte[] dhPart1Msg; // Saved DHPart1 Message (needed in shared secret calculation)
@@ -253,9 +254,6 @@ public class ZRTP {
     private static final byte[] mMsgConf2ACK = { 0x50, 0x5a, 0x00, 0x03, 'C', 'o', 'n', 'f', '2', 'A', 'C', 'K' };
     private static final byte[] mMsgErrorACK = { 0x50, 0x5a, 0x00, 0x03, 'E', 'r', 'r', 'o', 'r', 'A', 'C', 'K' };
     
-    // Commit message parts
-    private static final byte[] AUTH_TYPE_32     = { 'H', 'S', '3', '2' };
-    
     // shared secret MAC calculation constants
     private static final byte[] mResponderBytes = { 'R', 'e', 's', 'p', 'o', 'n', 'd', 'e', 'r' };
     private static final byte[] mInitiatorBytes = { 'I', 'n', 'i', 't', 'i', 'a', 't', 'o', 'r' };
@@ -263,8 +261,12 @@ public class ZRTP {
     // our cache expiry value; we're always sending the recommened value 0xffffffff
     private static final byte[] mOurCacheExpiry = { (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff };
 
-	private static final String DEFAULT_AUTHENTICATION_MODE = "HS80";
-	private static final int DEFAULT_AUTHENTICATION_TAG_SIZE = 10;
+    // WARNING: don't change this: the code is not very flexible about the length of strings within the headers
+    // until that is fixed, we can only allow exactly one cipherType and exactly two authentication mode's
+    // (currently, the mandatory modes from RFC 6189)
+    private static final String DEFAULT_CIPHERS = "AES1";   // 128 bit key
+    //private static final String DEFAULT_CIPHERS = "AES1AES3";   // 128 and 256 bit keys
+	private static final String DEFAULT_AUTHENTICATION_MODE = "HS80HS32";
     
     private static int counter = 0;
     private final Platform platform;
@@ -751,8 +753,8 @@ public class ZRTP {
         	hashes += "S256";
         	++hc;
         }
-        String ciphers = new String("AES1AES3"); // AES-128 & 256
-        String authTags = new String(DEFAULT_AUTHENTICATION_MODE); // HMAC-SHA1 80 bits
+        String ciphers = new String(DEFAULT_CIPHERS);
+        String authTags = new String(DEFAULT_AUTHENTICATION_MODE);
         String keyTypes = "";
         byte kc = 0;
         if(TestSettings.KEY_TYPE_EC38) {
@@ -768,12 +770,15 @@ public class ZRTP {
         	keyTypes += "DH3k";
         	++kc;
         }
+        int cipherCount = ciphers.length() / 4;
+        int authModeCount = authTags.length() / 4;
         String sasTypes = new String("B256"); // 32 bit & 256 bit sas supported
+        int sasCount = sasTypes.length() / 4;
         // Signature type field will be length 0 as no signatures used
         baos.write(0x00); // SMP flags all set to zero
         baos.write(hc); // hc = hashes count
-        baos.write(0x21); // cc = cypher count = 2, ac = auth tag count = 1 
-        baos.write((kc<<4) | 0x01); // kc = key agreement, sc = SAS count = 1
+        baos.write((cipherCount << 4) | authModeCount); 
+        baos.write((kc<<4) | sasCount); // kc = key agreement, sc = SAS count = 1
         baos.write(hashes.getBytes());
         baos.write(ciphers.getBytes());
         baos.write(authTags.getBytes());
@@ -959,8 +964,8 @@ public class ZRTP {
             baos.write(localZID);
             byte[] hash = dhMode.hash.getType();
             baos.write(hash); // We only use SHA-256
-            baos.write(cipherInUse.getType());
-            baos.write(AUTH_TYPE_32); // We only use HMAC-SHA1 32
+            baos.write(cipherInUse.getSymbol());
+            baos.write(authMode.getSymbol());
             baos.write(dhMode.getType());
             baos.write(SasType.B256.getType());
             baos.write(createHvi());
@@ -1267,10 +1272,10 @@ public class ZRTP {
         }
         
         //Now deriving the rest of the keys from s0 and KDF-Context (Section 4.5.3)
-        byte[] srtpKeyI  = getKeyFromKDF(s0, "Initiator SRTP master key",  kdfContext, 256); // TODO negotiated AES length 
-        byte[] srtpSaltI = getKeyFromKDF(s0, "Initiator SRTP master salt", kdfContext, 112);
-        byte[] srtpKeyR  = getKeyFromKDF(s0, "Responder SRTP master key",  kdfContext, 256);// TODO negotiated AES length
-        byte[] srtpSaltR = getKeyFromKDF(s0, "Responder SRTP master salt", kdfContext, 112);
+        byte[] srtpKeyI  = getKeyFromKDF(s0, "Initiator SRTP master key",  kdfContext, cipherInUse.getMasterKeyBits()); 
+        byte[] srtpSaltI = getKeyFromKDF(s0, "Initiator SRTP master salt", kdfContext, cipherInUse.getSaltBits());
+        byte[] srtpKeyR  = getKeyFromKDF(s0, "Responder SRTP master key",  kdfContext, cipherInUse.getMasterKeyBits());
+        byte[] srtpSaltR = getKeyFromKDF(s0, "Responder SRTP master salt", kdfContext, cipherInUse.getSaltBits());
         byte[] sasHash   = getKeyFromKDF(s0, "SAS", kdfContext, 256);
         newRS = getKeyFromKDF(s0, "retained secret", kdfContext, 256);
         if(platform.getLogger().isEnabled()) {
@@ -1648,13 +1653,22 @@ public class ZRTP {
             cipherInUse = CipherType.AES1;
             for (int i = 0; i < cipherCount; i++) {
                 // Only need to check for AES3 as, if its not there, we'll always use AES1
-                if (platform.getUtils().equals(CipherType.AES3.getType(), 0, aMsg, cipherPos + i*4, 4)) {
+                if (platform.getUtils().equals(CipherType.AES3.getSymbol(), 0, aMsg, cipherPos + i*4, 4)) {
                     cipherInUse = CipherType.AES3;
                 }
                 if(platform.isDebugVersion()) {
                 	logString("HELLO MSG - CIPHER: " + new String(aMsg, cipherPos + i*4, 4));
                 }
 
+            }
+            authMode = AuthenticationMode.HS32;
+            for (int i = 0; i < authCount; i++) {
+            	if (platform.getUtils().equals(AuthenticationMode.HS80.getSymbol(), 0, aMsg, authPos + i*4, 4)) {
+            		authMode = AuthenticationMode.HS80;
+            	}
+            	if(platform.isDebugVersion()) {
+                	logString("HELLO MSG - AUTH MODE: " + new String(aMsg, authPos + i*4, 4));
+                }
             }
             // If keyCount == 0, only supports mandatory DH3K
             dhMode = KeyAgreementType.DH3K;
@@ -1939,10 +1953,10 @@ public class ZRTP {
         } else if (!platform.getUtils().equals(HashType.SHA256.getType(), 0, data, offset+56, 4) && !platform.getUtils().equals(HashType.SHA384.getType(), 0, data, offset+56, 4) ) {
             msgValid = false;
             logString("validateCommitMessage, Found invalid hash type - "+(new String(data, offset+56, 4)));
-        } else if (!platform.getUtils().equals(CipherType.AES1.getType(), 0, data, offset+60, 4) && !platform.getUtils().equals(CipherType.AES3.getType(), 0, data, offset+60, 4)) {
+        } else if (!platform.getUtils().equals(CipherType.AES1.getSymbol(), 0, data, offset+60, 4) && !platform.getUtils().equals(CipherType.AES3.getSymbol(), 0, data, offset+60, 4)) {
             msgValid = false;
             logString("validateCommitMessage, Found invalid cipher type - "+(new String(data, offset+60, 4)));
-        } else if (!platform.getUtils().equals(AUTH_TYPE_32, 0, data, offset+64, 4)) {
+        } else if (!platform.getUtils().equals(AuthenticationMode.HS80.getSymbol(), 0, data, offset+64, 4) && !platform.getUtils().equals(AuthenticationMode.HS32.getSymbol(), 0, data, offset+64, 4)) {
             msgValid = false;
             logString("validateCommitMessage, Found invalid auth type - "+(new String(data, offset+64, 4)));
         } else if (!platform.getUtils().equals(KeyAgreementType.ECDH384.getType(), 0, data, offset+68, 4)
@@ -2415,7 +2429,11 @@ public class ZRTP {
 		return true;
 	}
 	
-	public String getAuthenticationMode() {
-		return DEFAULT_AUTHENTICATION_MODE;
+	public AuthenticationMode getAuthenticationMode() {
+		return authMode;
+	}
+	
+	public CipherType getCipherType() {
+		return cipherInUse;
 	}
 }
