@@ -58,6 +58,7 @@ public class SRTP {
     private int     firstRtpSeq;   // Sequence number of 1st send packet in session (used in session key generation)
     private int     rxSeq;         // Sequence number of last packet received in session (needed by decrypt key generation)
     private boolean receivedFirst; // True if 1st packet of a session has been received (needed by decrypt key generation)
+    private boolean replayProtection; // True if we must do replay protection (disabling replay protection is strongly discouraged)
     
     private byte[]  txSessEncKey;    // Session key for encryption, Tx Session
     private byte[]  txSessAuthKey;   // Session key for authentication, Tx Session
@@ -121,6 +122,7 @@ public class SRTP {
         rxRocAuthArray = new byte[4];     // ROC Array used in Tx Auth always 4 bytes
         rxAuthHMACArray = new byte[20];   // HMAC result is always 20 bytes
         setAuthTagSize(authTagSize);
+        setReplayProtection(true);
     }
     
     public void setAuthTagSize(int authTagSize) {
@@ -600,7 +602,7 @@ public class SRTP {
             log("unprotect(), seq = "+seq);
             logBuffer("unprotect(), rcvd pkt = ", packet.getPacket());
         }
-        if (isReplayedPacket(index)) {
+        if (replayProtection && isReplayedPacket(index)) {
             logWarning("Replayed packet received, sequence number " + index);
             return UNPROTECT_REPLAYED_PACKET;
         }
@@ -1097,5 +1099,9 @@ public class SRTP {
         }
         return ret;
     }
+
+	public void setReplayProtection(boolean replayProtection) {
+		this.replayProtection = replayProtection;		
+	}
 }
 
