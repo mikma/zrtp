@@ -1,3 +1,16 @@
+
+Introduction
+============
+
+This work is based on the ZORG ZRTP implementation originally
+sponsored by PrivateWave
+
+It has been extended under the OpenTelecoms.org project to complete
+the Java implementation of ZRTP and make it work under Android.
+
+See the COPYING file for details
+
+
 ZORG
 ====
 
